@@ -6,6 +6,7 @@
 - (NSString *)mode;
 - (BOOL)essential;
 - (BOOL)uninstalled;
+- (bool)isCommercial;
 - (BOOL)upgradableAndEssential:(BOOL)essential;
 @end
 
@@ -35,6 +36,17 @@
 @end
 
 @interface CyteTabBarController : UITabBarController
+@end
+
+@interface CyteWebViewController : CyteViewController
+- (void)customButtonClicked;
+@end
+
+@interface CydiaWebViewController : CyteWebViewController
+@end
+
+@interface CYPackageController : CydiaWebViewController
+- (void)_customButtonClicked;
 @end
 
 @interface CydiaTabBarController : CyteTabBarController <UITabBarControllerDelegate>

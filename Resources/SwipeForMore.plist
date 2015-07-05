@@ -50,6 +50,8 @@
         <integer>1</integer>
         <key>footerText</key>
         <string>By enabling Skip confirmation, SwipeForMore will automatically confirm the swipe task and dismiss the installation page only if there is no packages queue.
+
+Note: SwipeForMore does not work with commercial packages yet.
         
 © 2013 - 2015 Thatchapon Unprasert
 (@PoomSmart)</string>

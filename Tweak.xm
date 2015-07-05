@@ -41,6 +41,19 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
 
 %end*/
 
+CYPackageController *cy;
+
+%hook CYPackageController
+
+- (id)initWithDatabase:(Database *)database forPackage:(Package *)package withReferrer:(id)referrer
+{
+	self = %orig;
+	cy = self;
+	return self;
+}
+
+%end
+
 %hook Cydia
 
 - (void)reloadDataWithInvocation:(NSInvocation *)invocation { %orig; isQueuing = NO; }
@@ -110,11 +123,10 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 {
 	Package *package = [self packageAtIndexPath:indexPath_];
 	Cydia *delegate = (Cydia *)[UIApplication sharedApplication];
-	if ([delegate class] != NSClassFromString(@"Cydia"))
-		return nil;
 	NSMutableArray *actions = [NSMutableArray array];
 	BOOL installed = ![package uninstalled];
 	BOOL upgradable = [package upgradableAndEssential:NO];
+	bool commercial = [package isCommercial];
 	if (installed) {
 		UITableViewRowAction *deleteAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:UCLocalize("REMOVE") handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
 			should = noConfirm;
@@ -122,10 +134,13 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 		}];
 		[actions addObject:deleteAction];
 	}
-	NSString *installTitle = installed ? (upgradable ? UCLocalize("UPGRADE") : UCLocalize("REINSTALL")) : UCLocalize("INSTALL");
+	NSString *installTitle = installed ? (upgradable ? UCLocalize("UPGRADE") : UCLocalize("REINSTALL")) : (commercial ? @"Purchase" : UCLocalize("INSTALL"));
 	UITableViewRowAction *installAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:installTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
-		should = noConfirm;
-		[delegate installPackage:package];
+		should = noConfirm/* && !commercial*/;
+		/*if (commercial)
+			[cy _customButtonClicked];
+		else*/ if (!commercial)
+			[delegate installPackage:package];
 	}];
 	installAction.backgroundColor = [UIColor systemBlueColor];
 	[actions addObject:installAction];
@@ -137,14 +152,18 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 		clearAction.backgroundColor = [UIColor grayColor];
 		[actions addObject:clearAction];
 	} else {
-		NSString *queueTitle = [NSString stringWithFormat:@"%@\n(%@)", UCLocalize("QUEUE"), (installed ? UCLocalize("REMOVE") : UCLocalize("INSTALL"))];
+		NSString *queueTitle = [NSString stringWithFormat:@"%@\n(%@)", UCLocalize("QUEUE"), (installed ? UCLocalize("REMOVE") : installTitle)];
 		UITableViewRowAction *queueAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:queueTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
 			should = NO;
 			queue = YES;
 			if (installed)
 				[delegate removePackage:package];
-			else
-				[delegate installPackage:package];
+			else {
+				/*if (commercial)
+					[cy _customButtonClicked];
+				else*/ if (!commercial)
+					[delegate installPackage:package];
+			}
 		}];
 		queueAction.backgroundColor = installed ? [UIColor systemYellowColor] : [UIColor systemGreenColor];
 		[actions addObject:queueAction];
