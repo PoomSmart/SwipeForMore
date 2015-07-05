@@ -1,56 +1,4 @@
-#import "../PS.h"
-#import <notify.h>
-
-@interface Package : NSObject
-- (NSString *)mode;
-- (BOOL)essential;
-- (BOOL)upgradableAndEssential:(BOOL)essential;
-@end
-
-@interface Cydia : UIApplication
-- (void)distUpgrade;
-- (void)queue;
-- (void)returnToCydia;
-- (void)removePackage:(Package *)package;
-- (void)installPackage:(Package *)package;
-- (void)clearPackage:(Package *)package;
-- (void)showActionSheet:(UIActionSheet *)sheet fromItem:(UIBarButtonItem *)item;
-@end
-
-@interface Database : NSObject
-@end
-
-@interface ConfirmationController : UIViewController
-- (id)initWithDatabase:(Database *)database;
-- (void)complete;
-- (void)_doContinue;
-@end
-
-@interface CyteViewController : UIViewController
-@end
-
-@interface CyteTabBarController : UITabBarController
-@end
-
-@interface CydiaTabBarController : CyteTabBarController <UITabBarControllerDelegate>
-- (BOOL)updating;
-@end
-
-@interface PackageListController : CyteViewController <UITableViewDataSource, UITableViewDelegate, UIActionSheetDelegate>
-- (Package *)packageAtIndexPath:(NSIndexPath *)path;
-@end
-
-@interface FilteredPackageListController : PackageListController
-@end
-
-@interface ProgressController : UIViewController {
-	unsigned cancel_;
-}
-@end
-
-@interface InstalledController : FilteredPackageListController
-- (void)queueButtonClicked;
-@end
+#import "Header.h"
 
 static inline NSString *UCLocalizeEx(NSString *key, NSString *value = nil)
 {
@@ -62,6 +10,7 @@ BOOL enabled;
 BOOL noConfirm;
 BOOL should;
 BOOL queue;
+BOOL isQueuing;
 
 CFStringRef PreferencesNotification = CFSTR("com.PS.SwipeForMore.prefs");
 
@@ -79,7 +28,7 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
 	prefs();
 }
 
-ConfirmationController *cc;
+/*ConfirmationController *cc;
 
 %hook ConfirmationController
 
@@ -90,6 +39,14 @@ ConfirmationController *cc;
 	return self;
 }
 
+%end*/
+
+%hook Cydia
+
+- (void)reloadDataWithInvocation:(NSInvocation *)invocation { %orig; isQueuing = NO; }
+- (void)confirmWithNavigationController:(UINavigationController *)navigation { isQueuing = NO; %orig; }
+- (void)cancelAndClear:(bool)clear { isQueuing = clear ? NO : YES; %orig; }
+
 %end
 
 %hook CydiaTabBarController
@@ -98,7 +55,7 @@ ConfirmationController *cc;
 {
 	%orig;
 	if ([controller.topViewController isKindOfClass:NSClassFromString(@"ConfirmationController")]) {
-		if (should)
+		if (should && !isQueuing)
 			[(ConfirmationController *)controller.topViewController complete];
 		else if (queue) {
 			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.0*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
@@ -140,7 +97,7 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 
 %end
 
-%hook InstalledController
+%hook FilteredPackageListController
 
 %new
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath
@@ -156,12 +113,17 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 	if ([delegate class] != NSClassFromString(@"Cydia"))
 		return nil;
 	NSMutableArray *actions = [NSMutableArray array];
-	UITableViewRowAction *deleteAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:UCLocalize("REMOVE") handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-		should = noConfirm;
-		[delegate removePackage:package];
-    }];
-	[actions addObject:deleteAction];
-	UITableViewRowAction *installAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:[package upgradableAndEssential:NO] ? UCLocalize("UPGRADE") : UCLocalize("REINSTALL") handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
+	BOOL installed = ![package uninstalled];
+	BOOL upgradable = [package upgradableAndEssential:NO];
+	if (installed) {
+		UITableViewRowAction *deleteAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:UCLocalize("REMOVE") handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+			should = noConfirm;
+			[delegate removePackage:package];
+		}];
+		[actions addObject:deleteAction];
+	}
+	NSString *installTitle = installed ? (upgradable ? UCLocalize("UPGRADE") : UCLocalize("REINSTALL")) : UCLocalize("INSTALL");
+	UITableViewRowAction *installAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:installTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
 		should = noConfirm;
 		[delegate installPackage:package];
 	}];
@@ -174,15 +136,19 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 		}];
 		clearAction.backgroundColor = [UIColor grayColor];
 		[actions addObject:clearAction];
-	}/* else {
-		UITableViewRowAction *queueAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:UCLocalize("QUEUE") handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
+	} else {
+		NSString *queueTitle = [NSString stringWithFormat:@"%@\n(%@)", UCLocalize("QUEUE"), (installed ? UCLocalize("REMOVE") : UCLocalize("INSTALL"))];
+		UITableViewRowAction *queueAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:queueTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
 			should = NO;
 			queue = YES;
-			[delegate removePackage:package];
+			if (installed)
+				[delegate removePackage:package];
+			else
+				[delegate installPackage:package];
 		}];
-		queueAction.backgroundColor = [UIColor systemGreenColor];
+		queueAction.backgroundColor = installed ? [UIColor systemYellowColor] : [UIColor systemGreenColor];
 		[actions addObject:queueAction];
-	}*/
+	}
     return actions;
 }
 

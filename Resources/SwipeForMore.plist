@@ -49,7 +49,9 @@
         <key>footerAlignment</key>
         <integer>1</integer>
         <key>footerText</key>
-        <string>© 2013 - 2015 Thatchapon Unprasert
+        <string>By enabling Skip confirmation, SwipeForMore will automatically confirm the swipe task and dismiss the installation page only if there is no packages queue.
+        
+© 2013 - 2015 Thatchapon Unprasert
 (@PoomSmart)</string>
       </dict>
     </array>
