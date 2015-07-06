@@ -67,7 +67,7 @@ CYPackageController *cy;
 - (void)presentModalViewController:(UINavigationController *)controller animated:(BOOL)animated
 {
 	%orig;
-	if ([controller.topViewController isKindOfClass:NSClassFromString(@"ConfirmationController")]) {
+	if ([controller.topViewController class] == NSClassFromString(@"ConfirmationController")) {
 		if (should && !isQueuing)
 			[(ConfirmationController *)controller.topViewController complete];
 		else if (queue) {
@@ -110,6 +110,17 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 
 %end
 
+NSString *purchaseString()
+{
+	// ¯\_(ツ)_/¯
+	return [[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/iTunesStore.framework"] localizedStringForKey:@"BUY" value:@"Buy" table:nil];
+}
+
+NSString *normalizedString(NSString *string)
+{
+	return [string stringByReplacingOccurrencesOfString:@" " withString:@"\n"];
+}
+
 %hook FilteredPackageListController
 
 %new
@@ -134,19 +145,22 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 		}];
 		[actions addObject:deleteAction];
 	}
-	NSString *installTitle = installed ? (upgradable ? UCLocalize("UPGRADE") : UCLocalize("REINSTALL")) : (commercial ? @"Purchase" : UCLocalize("INSTALL"));
+	NSString *installTitle = installed ? (upgradable ? UCLocalize("UPGRADE") : UCLocalize("REINSTALL")) : (commercial ? purchaseString() : UCLocalize("INSTALL"));
+	installTitle = normalizedString(installTitle); // In some languages, localized "reinstall" string is too long
 	UITableViewRowAction *installAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:installTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
-		should = noConfirm/* && !commercial*/;
-		/*if (commercial)
-			[cy _customButtonClicked];
-		else*/ if (!commercial)
+		should = noConfirm && (!commercial || (commercial && installed));
+		if ((commercial && installed && !upgradable) || !commercial)
 			[delegate installPackage:package];
 	}];
-	installAction.backgroundColor = [UIColor systemBlueColor];
+	if (commercial && !installed)
+		installAction.backgroundColor = [UIColor systemGrayColor];
+	else
+		installAction.backgroundColor = [UIColor systemBlueColor];
 	[actions addObject:installAction];
 	if ([package mode] != nil) {
 		UITableViewRowAction *clearAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:UCLocalize("CLEAR") handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
 			should = noConfirm;
+			queue = isQueuing;
 			[delegate clearPackage:package];
 		}];
 		clearAction.backgroundColor = [UIColor grayColor];
@@ -159,13 +173,13 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 			if (installed)
 				[delegate removePackage:package];
 			else {
-				/*if (commercial)
-					[cy _customButtonClicked];
-				else*/ if (!commercial)
+				if (commercial)
+					[cy customButtonClicked];
+				else
 					[delegate installPackage:package];
 			}
 		}];
-		queueAction.backgroundColor = installed ? [UIColor systemYellowColor] : [UIColor systemGreenColor];
+		queueAction.backgroundColor = installed ? [UIColor systemYellowColor] : (commercial ? [UIColor grayColor] : [UIColor systemGreenColor]);
 		[actions addObject:queueAction];
 	}
     return actions;
