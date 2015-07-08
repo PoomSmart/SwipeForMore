@@ -1,4 +1,5 @@
-#import "Header.h"
+#import "../CydiaHeader.h"
+#import <notify.h>
 
 static inline NSString *UCLocalizeEx(NSString *key, NSString *value = nil)
 {
@@ -8,6 +9,7 @@ static inline NSString *UCLocalizeEx(NSString *key, NSString *value = nil)
 
 BOOL enabled;
 BOOL noConfirm;
+BOOL short_;
 BOOL should;
 BOOL queue;
 BOOL isQueuing;
@@ -21,6 +23,8 @@ static void prefs()
 	enabled = val ? [val boolValue] : YES;
 	val = prefs[@"confirm"];
 	noConfirm = [val boolValue];
+	val = prefs[@"short"];
+	short_ = [val boolValue];
 }
 
 static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
@@ -110,10 +114,45 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 
 %end
 
-NSString *purchaseString()
+NSString *itsString(NSString *key, NSString *value)
 {
 	// ¯\_(ツ)_/¯
-	return [[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/iTunesStore.framework"] localizedStringForKey:@"BUY" value:@"Buy" table:nil];
+	return [[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/iTunesStore.framework"] localizedStringForKey:key value:value table:nil];
+}
+
+NSString *buyString()
+{
+	return short_ ? @"$" : itsString(@"BUY", @"Buy");
+}
+
+NSString *installString()
+{
+	return short_ ? @"↓" : UCLocalize("INSTALL");
+}
+
+NSString *reinstallString()
+{
+	return short_ ? @"⇊" : UCLocalize("REINSTALL");
+}
+
+NSString *upgradeString()
+{
+	return short_ ? @"↑" : UCLocalize("UPGRADE");
+}
+
+NSString *removeString()
+{
+	return short_ ? @"╳" : UCLocalize("REMOVE");
+}
+
+NSString *queueString()
+{
+	return short_ ? @"⇟" : UCLocalize("QUEUE");
+}
+
+NSString *clearString()
+{
+	return short_ ? @"⌧" : UCLocalize("CLEAR");
 }
 
 NSString *normalizedString(NSString *string)
@@ -139,26 +178,22 @@ NSString *normalizedString(NSString *string)
 	BOOL upgradable = [package upgradableAndEssential:NO];
 	bool commercial = [package isCommercial];
 	if (installed) {
-		UITableViewRowAction *deleteAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:UCLocalize("REMOVE") handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+		UITableViewRowAction *deleteAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:removeString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
 			should = noConfirm;
 			[delegate removePackage:package];
 		}];
 		[actions addObject:deleteAction];
 	}
-	NSString *installTitle = installed ? (upgradable ? UCLocalize("UPGRADE") : UCLocalize("REINSTALL")) : (commercial ? purchaseString() : UCLocalize("INSTALL"));
+	NSString *installTitle = installed ? (upgradable ? upgradeString() : reinstallString()) : (commercial ? buyString() : installString());
 	installTitle = normalizedString(installTitle); // In some languages, localized "reinstall" string is too long
 	UITableViewRowAction *installAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:installTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
 		should = noConfirm && (!commercial || (commercial && installed));
-		if ((commercial && installed && !upgradable) || !commercial)
-			[delegate installPackage:package];
+		[delegate installPackage:package];
 	}];
-	if (commercial && !installed)
-		installAction.backgroundColor = [UIColor systemGrayColor];
-	else
-		installAction.backgroundColor = [UIColor systemBlueColor];
+	installAction.backgroundColor = [UIColor systemBlueColor];
 	[actions addObject:installAction];
 	if ([package mode] != nil) {
-		UITableViewRowAction *clearAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:UCLocalize("CLEAR") handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
+		UITableViewRowAction *clearAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:clearString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
 			should = noConfirm;
 			queue = isQueuing;
 			[delegate clearPackage:package];
@@ -166,20 +201,21 @@ NSString *normalizedString(NSString *string)
 		clearAction.backgroundColor = [UIColor grayColor];
 		[actions addObject:clearAction];
 	} else {
-		NSString *queueTitle = [NSString stringWithFormat:@"%@\n(%@)", UCLocalize("QUEUE"), (installed ? UCLocalize("REMOVE") : installTitle)];
-		UITableViewRowAction *queueAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:queueTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
+		NSString *format = short_ ? @"%@ %@" : @"%@\n%@";
+		NSString *queueTitle = [NSString stringWithFormat:format, queueString(), (installed ? removeString() : installTitle)];
+		UITableViewRowAction *queueAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:queueTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
 			should = NO;
 			queue = YES;
 			if (installed)
 				[delegate removePackage:package];
 			else {
-				if (commercial)
+				/*if (commercial)
 					[cy customButtonClicked];
-				else
+				else*/
 					[delegate installPackage:package];
 			}
 		}];
-		queueAction.backgroundColor = installed ? [UIColor systemYellowColor] : (commercial ? [UIColor grayColor] : [UIColor systemGreenColor]);
+		queueAction.backgroundColor = installed ? [UIColor systemYellowColor] : [UIColor systemGreenColor];
 		[actions addObject:queueAction];
 	}
     return actions;
