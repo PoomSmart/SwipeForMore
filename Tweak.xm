@@ -71,16 +71,16 @@ CYPackageController *cy;
 - (void)presentModalViewController:(UINavigationController *)controller animated:(BOOL)animated
 {
 	%orig;
-	if ([controller.topViewController class] == NSClassFromString(@"ConfirmationController")) {
-		if (should && !isQueuing)
-			[(ConfirmationController *)controller.topViewController complete];
-		else if (queue) {
-			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.0*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.95*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
+		if ([controller.topViewController class] == NSClassFromString(@"ConfirmationController")) {
+			if (should && !isQueuing)
+				[(ConfirmationController *)controller.topViewController confirmButtonClicked];
+			else if (queue) {
 				[(ConfirmationController *)controller.topViewController _doContinue];
 				queue = NO;
-			});
+			}
 		}
-	}
+	});
 }
 
 %end
@@ -103,7 +103,7 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 		should = NO;
 		if (MSHookIvar<unsigned>(self, "cancel_") == 0) {
 			Cydia *delegate = (Cydia *)[UIApplication sharedApplication];
-			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.3*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.22*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
 				_UpdateExternalStatus(0);
 				[delegate returnToCydia];
 				[[[self navigationController] parentOrPresentingViewController] dismissModalViewControllerAnimated:YES];
@@ -122,7 +122,7 @@ NSString *itsString(NSString *key, NSString *value)
 
 NSString *buyString()
 {
-	return short_ ? @"$" : itsString(@"BUY", @"Buy");
+	return short_ ? @"💳" : itsString(@"BUY", @"Buy");
 }
 
 NSString *installString()
@@ -155,6 +155,13 @@ NSString *clearString()
 	return short_ ? @"⌧" : UCLocalize("CLEAR");
 }
 
+/*
+NSString *downgradeString()
+{
+	return short_ ? @"" : UCLocalize("DOWNGRADE");
+}
+*/
+
 NSString *normalizedString(NSString *string)
 {
 	return [string stringByReplacingOccurrencesOfString:@" " withString:@"\n"];
@@ -183,6 +190,12 @@ NSString *normalizedString(NSString *string)
 			[delegate removePackage:package];
 		}];
 		[actions addObject:deleteAction];
+		/*
+		UITableViewRowAction *downgradeAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:downgradeString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+			should = noConfirm;
+		}];
+		[actions addObject:downgradeAction];
+		*/
 	}
 	NSString *installTitle = installed ? (upgradable ? upgradeString() : reinstallString()) : (commercial ? buyString() : installString());
 	installTitle = normalizedString(installTitle); // In some languages, localized "reinstall" string is too long
@@ -209,9 +222,9 @@ NSString *normalizedString(NSString *string)
 			if (installed)
 				[delegate removePackage:package];
 			else {
-				/*if (commercial)
+				if (commercial)
 					[cy customButtonClicked];
-				else*/
+				else
 					[delegate installPackage:package];
 			}
 		}];
@@ -224,6 +237,7 @@ NSString *normalizedString(NSString *string)
 %new
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath
 {
+	[tableView setEditing:NO animated:YES];
 }
 
 %end
