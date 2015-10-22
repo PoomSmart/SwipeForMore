@@ -9,10 +9,13 @@ static inline NSString *UCLocalizeEx(NSString *key, NSString *value = nil)
 
 BOOL enabled;
 BOOL noConfirm;
+BOOL autoDismiss;
 BOOL short_;
 BOOL should;
 BOOL queue;
 BOOL isQueuing;
+
+NSString *pkgName;
 
 CFStringRef PreferencesNotification = CFSTR("com.PS.SwipeForMore.prefs");
 
@@ -23,6 +26,8 @@ static void prefs()
 	enabled = val ? [val boolValue] : YES;
 	val = prefs[@"confirm"];
 	noConfirm = [val boolValue];
+	val = prefs[@"autoDismiss"];
+	autoDismiss = val ? [val boolValue] : YES;
 	val = prefs[@"short"];
 	short_ = [val boolValue];
 }
@@ -101,7 +106,13 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 	%orig;
 	if (should) {
 		should = NO;
-		if (MSHookIvar<unsigned>(self, "cancel_") == 0) {
+		uint64_t status = 0;
+		int notify_token;
+		if (notify_register_check("com.saurik.Cydia.status", &notify_token) == NOTIFY_STATUS_OK) {
+			notify_get_state(notify_token, &status);
+			notify_cancel(notify_token);
+		}
+		if (status == 0) {
 			Cydia *delegate = (Cydia *)[UIApplication sharedApplication];
 			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.22*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
 				_UpdateExternalStatus(0);
@@ -132,7 +143,7 @@ NSString *installString()
 
 NSString *reinstallString()
 {
-	return short_ ? @"⇊" : UCLocalize("REINSTALL");
+	return short_ ? @"↺" : UCLocalize("REINSTALL");
 }
 
 NSString *upgradeString()
@@ -155,12 +166,10 @@ NSString *clearString()
 	return short_ ? @"⌧" : UCLocalize("CLEAR");
 }
 
-/*
 NSString *downgradeString()
 {
-	return short_ ? @"" : UCLocalize("DOWNGRADE");
+	return short_ ? @"⇵" : UCLocalize("DOWNGRADE");
 }
-*/
 
 NSString *normalizedString(NSString *string)
 {
@@ -183,42 +192,57 @@ NSString *normalizedString(NSString *string)
 	NSMutableArray *actions = [NSMutableArray array];
 	BOOL installed = ![package uninstalled];
 	BOOL upgradable = [package upgradableAndEssential:NO];
+	BOOL isQueue = [package mode] != nil;
 	bool commercial = [package isCommercial];
-	if (installed) {
+	if (installed)
+	{
+		// remove
 		UITableViewRowAction *deleteAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:removeString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
 			should = noConfirm;
 			[delegate removePackage:package];
 		}];
 		[actions addObject:deleteAction];
-		/*
-		UITableViewRowAction *downgradeAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:downgradeString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-			should = noConfirm;
-		}];
-		[actions addObject:downgradeAction];
-		*/
 	}
+	NSString *format = @"%@\n%@";
 	NSString *installTitle = installed ? (upgradable ? upgradeString() : reinstallString()) : (commercial ? buyString() : installString());
 	installTitle = normalizedString(installTitle); // In some languages, localized "reinstall" string is too long
-	UITableViewRowAction *installAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:installTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
-		should = noConfirm && (!commercial || (commercial && installed));
-		[delegate installPackage:package];
-	}];
-	installAction.backgroundColor = [UIColor systemBlueColor];
-	[actions addObject:installAction];
-	if ([package mode] != nil) {
-		UITableViewRowAction *clearAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:clearString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
-			should = noConfirm;
+	if ((!installed || short_ || IPAD) && !isQueue)
+	{
+		// install
+		UITableViewRowAction *installAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:installTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+			should = noConfirm && (!commercial || (commercial && installed));
+			[delegate installPackage:package];
+		}];
+		installAction.backgroundColor = [UIColor systemBlueColor];
+		[actions addObject:installAction];
+	}
+	if (installed && !isQueue)
+	{
+		// queue (re)install action
+		NSString *queueReinstallTitle = [NSString stringWithFormat:format, queueString(), installTitle];
+		UITableViewRowAction *queueReinstallAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:queueReinstallTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+			should = NO;
+			queue = autoDismiss;
+			[delegate installPackage:package];
+		}];
+		queueReinstallAction.backgroundColor = [UIColor orangeColor];
+		[actions addObject:queueReinstallAction];
+	}
+	if (isQueue) {
+		// a package is currently in clear state
+		UITableViewRowAction *clearAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:clearString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+			should = NO;
 			queue = isQueuing;
 			[delegate clearPackage:package];
 		}];
 		clearAction.backgroundColor = [UIColor grayColor];
 		[actions addObject:clearAction];
 	} else {
-		NSString *format = short_ ? @"%@ %@" : @"%@\n%@";
+		// queue remove/install
 		NSString *queueTitle = [NSString stringWithFormat:format, queueString(), (installed ? removeString() : installTitle)];
-		UITableViewRowAction *queueAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:queueTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath){
+		UITableViewRowAction *queueAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:queueTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
 			should = NO;
-			queue = YES;
+			queue = autoDismiss;
 			if (installed)
 				[delegate removePackage:package];
 			else {
@@ -230,6 +254,20 @@ NSString *normalizedString(NSString *string)
 		}];
 		queueAction.backgroundColor = installed ? [UIColor systemYellowColor] : [UIColor systemGreenColor];
 		[actions addObject:queueAction];
+	}
+	if ([package downgrades].count > 0)
+	{
+		NSString *downgradeTitle = downgradeString();
+		UITableViewRowAction *downgradeAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:downgradeTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+			should = NO;
+			queue = NO;
+			[self didSelectPackage:package];
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.9*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
+				[cy _clickButtonWithName:@"DOWNGRADE"];
+			});
+		}];
+		downgradeAction.backgroundColor = [UIColor purpleColor];
+		[actions addObject:downgradeAction];
 	}
     return actions;
 }

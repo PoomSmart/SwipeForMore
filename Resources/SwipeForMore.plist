@@ -41,7 +41,21 @@
 		<key>key</key>
 		<string>confirm</string>
 		<key>label</key>
-		<string>Skip confirmation</string>
+		<string>Auto install/remove</string>
+	</dict>
+	<dict>
+		<key>cell</key>
+		<string>PSSwitchCell</string>
+		<key>PostNotification</key>
+		<string>com.PS.SwipeForMore.prefs</string>
+		<key>default</key>
+		<true/>
+		<key>defaults</key>
+		<string>com.PS.SwipeForMore</string>
+		<key>key</key>
+		<string>autoDismiss</string>
+		<key>label</key>
+		<string>Auto dismiss</string>
 	</dict>
 	<dict>
 		<key>cell</key>
@@ -63,7 +77,9 @@
         <key>footerAlignment</key>
         <integer>1</integer>
         <key>footerText</key>
-        <string>By enabling Skip confirmation, SwipeForMore will automatically confirm the swipe task and dismiss the installation page only if there is no packages queue.
+        <string>By enabling Auto install/remove, SwipeForMore will automatically confirm the install/remove task and dismiss automatically for a single package and only if there is no packages queue and the exit status is 0 (Return to Cydia).
+        
+By enabling Auto dismiss, SwipeForMore will automatically dismiss the confirmation page after any install/remove queue task.
 
 Note: SwipeForMore does not fully work with commercial packages yet.
         
