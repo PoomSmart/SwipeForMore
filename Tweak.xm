@@ -15,8 +15,6 @@ BOOL should;
 BOOL queue;
 BOOL isQueuing;
 
-NSString *pkgName;
-
 CFStringRef PreferencesNotification = CFSTR("com.PS.SwipeForMore.prefs");
 
 static void prefs()
@@ -73,19 +71,25 @@ CYPackageController *cy;
 
 %hook CydiaTabBarController
 
-- (void)presentModalViewController:(UINavigationController *)controller animated:(BOOL)animated
+- (void)presentViewController:(UIViewController *)vc animated:(BOOL)animated completion:(void (^)(void))completion
 {
-	%orig;
-	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.95*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
-		if ([controller.topViewController class] == NSClassFromString(@"ConfirmationController")) {
-			if (should && !isQueuing)
-				[(ConfirmationController *)controller.topViewController confirmButtonClicked];
-			else if (queue) {
-				[(ConfirmationController *)controller.topViewController _doContinue];
-				queue = NO;
-			}
+	if ([vc isKindOfClass:[UINavigationController class]]) {
+		if ([((UINavigationController *)vc).topViewController class] == NSClassFromString(@"ConfirmationController")) {
+			void (^block)(void) = ^(void) {
+				dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.16*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
+					if (should && !isQueuing)
+						[(ConfirmationController *)((UINavigationController *)vc).topViewController confirmButtonClicked];
+					else if (queue) {
+						[(ConfirmationController *)((UINavigationController *)vc).topViewController _doContinue];
+							queue = NO;
+					}
+				});
+			};
+			%orig(vc, animated, block);
+			return;
 		}
-	});
+	}
+	%orig;
 }
 
 %end
@@ -208,10 +212,17 @@ NSString *normalizedString(NSString *string)
 	installTitle = normalizedString(installTitle); // In some languages, localized "reinstall" string is too long
 	if ((!installed || short_ || IPAD) && !isQueue)
 	{
-		// install
+		// install or buy
 		UITableViewRowAction *installAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:installTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
 			should = noConfirm && (!commercial || (commercial && installed));
-			[delegate installPackage:package];
+			if (commercial && !installed) {
+				[self didSelectPackage:package];
+				dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.5*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
+					[cy customButtonClicked];
+				});	
+			}
+			else
+				[delegate installPackage:package];
 		}];
 		installAction.backgroundColor = [UIColor systemBlueColor];
 		[actions addObject:installAction];
@@ -245,12 +256,8 @@ NSString *normalizedString(NSString *string)
 			queue = autoDismiss;
 			if (installed)
 				[delegate removePackage:package];
-			else {
-				if (commercial)
-					[cy customButtonClicked];
-				else
-					[delegate installPackage:package];
-			}
+			else
+				[delegate installPackage:package];
 		}];
 		queueAction.backgroundColor = installed ? [UIColor systemYellowColor] : [UIColor systemGreenColor];
 		[actions addObject:queueAction];
