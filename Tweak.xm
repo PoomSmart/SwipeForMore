@@ -63,7 +63,7 @@ CYPackageController *cy;
 
 %hook Cydia
 
-- (void)reloadDataWithInvocation:(NSInvocation *)invocation { %orig; isQueuing = NO; }
+- (void)reloadDataWithInvocation:(NSInvocation *)invocation { isQueuing = NO; %orig; }
 - (void)confirmWithNavigationController:(UINavigationController *)navigation { isQueuing = NO; %orig; }
 - (void)cancelAndClear:(bool)clear { isQueuing = clear ? NO : YES; %orig; }
 
@@ -83,6 +83,8 @@ CYPackageController *cy;
 						[(ConfirmationController *)((UINavigationController *)vc).topViewController _doContinue];
 							queue = NO;
 					}
+					if (completion)
+						completion();
 				});
 			};
 			%orig(vc, animated, block);
