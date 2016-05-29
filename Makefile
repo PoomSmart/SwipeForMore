@@ -1,12 +1,16 @@
 GO_EASY_ON_ME = 1
-TARGET = iphone:latest:8.0
+DEBUG = 0
 ARCHS = armv7 armv7s arm64
+PACKAGE_VERSION = 1.1-3
 
-include theos/makefiles/common.mk
+include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = SwipeForMore
 SwipeForMore_FILES = Tweak.xm
 SwipeForMore_FRAMEWORKS = UIKit
+ifeq ($DEBUG, 1)
+SwipeForMore_LIBRARIES = apt-pkg
+endif
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
