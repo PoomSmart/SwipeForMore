@@ -1,11 +1,14 @@
-#import "../CydiaHeader.h"
+#import "../PS.h"
+#import <Cydia/FilteredPackageListController.h>
+#import <Cydia/CYPackageController.h>
+#import <Cydia/ConfirmationController.h>
+#import <Cydia/ProgressController.h>
+#import <Cydia/Cydia-Class.h>
 #import <notify.h>
 
-static inline NSString *UCLocalizeEx(NSString *key, NSString *value = nil)
-{
-	return [[NSBundle mainBundle] localizedStringForKey:key value:value table:nil];
-}
-#define UCLocalize(key) UCLocalizeEx(@ key)
+@interface UIViewController (API)
+- (UIViewController *)parentOrPresentingViewController;
+@end
 
 BOOL enabled;
 BOOL noConfirm;
@@ -15,9 +18,11 @@ BOOL short_;
 BOOL checkSupport;
 #endif
 
-BOOL should;
+BOOL shouldDismissAfterProgress;
 BOOL queue;
 BOOL isQueuing;
+BOOL fromTweak = NO;
+BOOL suppressCC = NO;
 
 CFStringRef PreferencesNotification = CFSTR("com.PS.SwipeForMore.prefs");
 NSString *format = @"%@\n%@";
@@ -32,7 +37,7 @@ static void prefs()
 	val = prefs[@"autoDismiss"];
 	autoDismiss = val ? [val boolValue] : YES;
 	val = prefs[@"short"];
-	short_ = [val boolValue];
+	short_ = val ? [val boolValue] : YES;
 	#if DEBUG
 	val = prefs[@"checkSupport"];
 	checkSupport = [val boolValue];
@@ -44,18 +49,16 @@ static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStrin
 	prefs();
 }
 
-/*ConfirmationController *cc;
-
-%hook ConfirmationController
-
-- (id)initWithDatabase:(Database *)database
-{
-	self = %orig;
-	cc = self;
-	return self;
+static _finline void _UpdateExternalStatus(uint64_t newStatus) {
+    int notify_token;
+    if (notify_register_check("com.saurik.Cydia.status", &notify_token) == NOTIFY_STATUS_OK) {
+        notify_set_state(notify_token, newStatus);
+        notify_cancel(notify_token);
+    }
+    notify_post("com.saurik.Cydia.status");
 }
 
-%end*/
+#define cyDelegate ((Cydia *)[UIApplication sharedApplication])
 
 CYPackageController *cy;
 
@@ -72,26 +75,35 @@ CYPackageController *cy;
 
 %hook Cydia
 
-- (void)reloadDataWithInvocation:(NSInvocation *)invocation { isQueuing = NO; %orig; }
-- (void)confirmWithNavigationController:(UINavigationController *)navigation { isQueuing = NO; %orig; }
-- (void)cancelAndClear:(bool)clear { isQueuing = !clear; %orig; }
+- (void)reloadDataWithInvocation:(NSInvocation *)invocation
+{
+	isQueuing = NO;
+	%orig;
+}
+
+- (void)confirmWithNavigationController:(UINavigationController *)navigation
+{
+	isQueuing = NO;
+	%orig;
+}
+
+- (void)cancelAndClear:(bool)clear
+{
+	isQueuing = !clear;
+	%orig;
+}
+
+- (bool)perform
+{
+	suppressCC = fromTweak && queue;
+	bool value = %orig;
+	suppressCC = fromTweak = NO;
+	return value;
+}
 
 %end
 
 #if DEBUG
-
-Database *database;
-
-/*%hook Database
-
-+ (Database *)sharedInstance
-{
-	return database = %orig;
-}
-
-// By enabling Check support, SwipeForMore will check for package compatibility before (queue) installation and wouldn't advance if the current package isn't supported. The check might takes some time but it can ensure the right packages to be installed.
-
-%end*/
 
 static void installPackage(Package *package)
 {
@@ -132,21 +144,33 @@ static void disableAction(UITableViewRowAction *action)
 {
 	if ([vc isKindOfClass:[UINavigationController class]]) {
 		if ([((UINavigationController *)vc).topViewController class] == NSClassFromString(@"ConfirmationController")) {
-			void (^block)(void) = ^(void) {
-				dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.16*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
-					if (should && !isQueuing)
-						[(ConfirmationController *)(((UINavigationController *)vc).topViewController) confirmButtonClicked];
-					else if (queue) {
-						// queue a package
-						[(ConfirmationController *)(((UINavigationController *)vc).topViewController) _doContinue];
-						queue = NO;
-					}
+			ConfirmationController *cc = (ConfirmationController *)(((UINavigationController *)vc).topViewController);
+			if (MSHookIvar<NSMutableArray *>(cc, "issues_").count) {
+				// Problem detected, won't auto-dismiss here
+				%orig;
+				return;
+			}
+			if (suppressCC) {
+				if (queue) {
+					// queue a package
+					[cc _doContinue];
+					queue = NO;
+				}
+				if (completion)
+					completion();
+				return;
+			}
+			if (shouldDismissAfterProgress && !isQueuing) {
+				void (^block)(void) = ^(void) {
 					if (completion)
 						completion();
-				});
-			};
-			%orig(vc, animated, block);
-			return;
+					dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.20 * NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
+						[cc confirmButtonClicked];
+					});
+				};
+				%orig(vc, animated, block);
+				return;
+			}
 		}
 	}
 	%orig;
@@ -154,22 +178,24 @@ static void disableAction(UITableViewRowAction *action)
 
 %end
 
-static _finline void _UpdateExternalStatus(uint64_t newStatus) {
-    int notify_token;
-    if (notify_register_check("com.saurik.Cydia.status", &notify_token) == NOTIFY_STATUS_OK) {
-        notify_set_state(notify_token, newStatus);
-        notify_cancel(notify_token);
-    }
-    notify_post("com.saurik.Cydia.status");
+%hook ConfirmationController
+
+- (void)dismissModalViewControllerAnimated:(BOOL)animated
+{
+	if (suppressCC)
+		return;
+	%orig;
 }
+
+%end
 
 %hook ProgressController
 
 - (void)invoke:(NSInvocation *)invocation withTitle:(NSString *)title
 {
 	%orig;
-	if (should) {
-		should = NO;
+	if (shouldDismissAfterProgress) {
+		shouldDismissAfterProgress = NO;
 		uint64_t status = -1;
 		int notify_token;
 		if (notify_register_check("com.saurik.Cydia.status", &notify_token) == NOTIFY_STATUS_OK) {
@@ -177,11 +203,10 @@ static _finline void _UpdateExternalStatus(uint64_t newStatus) {
 			notify_cancel(notify_token);
 		}
 		if (status == 0 && autoDismiss) {
-			Cydia *delegate = (Cydia *)[UIApplication sharedApplication];
-			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.22*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.22 * NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
 				_UpdateExternalStatus(0);
-				[delegate returnToCydia];
-				[[[self navigationController] parentOrPresentingViewController] dismissModalViewControllerAnimated:YES];
+				[cyDelegate returnToCydia];
+				[[[self navigationController] parentOrPresentingViewController] dismissViewControllerAnimated:YES completion:nil];
 			});
 		}
 	}
@@ -263,14 +288,14 @@ NSString *normalizedString(NSString *string)
 	if (installed) {
 		// remove
 		UITableViewRowAction *deleteAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:removeString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-			should = noConfirm;
+			shouldDismissAfterProgress = noConfirm;
 			[delegate removePackage:package];
 		}];
 		[actions addObject:deleteAction];
 	}
 	NSString *installTitle = installed ? (upgradable ? upgradeString() : reinstallString()) : (commercial ? buyString() : installString());
 	installTitle = normalizedString(installTitle); // In some languages, localized "reinstall" string is too long
-	if ((!installed || short_ || IPAD) && !isQueue)	{
+	if ((!installed || short_ || IS_IPAD) && !isQueue)	{
 		// install or buy
 		UITableViewRowAction *installAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:installTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
 			#if DEBUG
@@ -280,7 +305,7 @@ NSString *normalizedString(NSString *string)
 				return;
 			}
 			#endif
-			should = noConfirm && (!commercial || (commercial && installed));
+			shouldDismissAfterProgress = noConfirm && (!commercial || (commercial && installed));
 			if (commercial && !installed) {
 				[self didSelectPackage:package];
 				dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.5*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
@@ -297,9 +322,11 @@ NSString *normalizedString(NSString *string)
 		// queue reinstall action
 		NSString *queueReinstallTitle = [NSString stringWithFormat:format, queueString(), installTitle];
 		UITableViewRowAction *queueReinstallAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:queueReinstallTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-			should = NO;
+			shouldDismissAfterProgress = NO;
 			queue = autoDismiss;
+			fromTweak = YES;
 			[delegate installPackage:package];
+			fromTweak = NO;
 		}];
 		queueReinstallAction.backgroundColor = [UIColor orangeColor];
 		[actions addObject:queueReinstallAction];
@@ -307,9 +334,11 @@ NSString *normalizedString(NSString *string)
 	if (isQueue) {
 		// a package is currently in clear state
 		UITableViewRowAction *clearAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:clearString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-			should = NO;
+			shouldDismissAfterProgress = NO;
 			queue = isQueuing;
+			fromTweak = YES;
 			[delegate clearPackage:package];
+			fromTweak = NO;
 		}];
 		clearAction.backgroundColor = [UIColor grayColor];
 		[actions addObject:clearAction];
@@ -324,28 +353,33 @@ NSString *normalizedString(NSString *string)
 				return;
 			}
 			#endif
-			should = NO;
+			shouldDismissAfterProgress = NO;
 			queue = autoDismiss;
+			fromTweak = YES;
 			if (installed)
 				[delegate removePackage:package];
 			else
 				[delegate installPackage:package];
+			fromTweak = NO;
 		}];
 		queueAction.backgroundColor = installed ? [UIColor systemYellowColor] : [UIColor systemGreenColor];
 		[actions addObject:queueAction];
 	}
-	if ([package downgrades].count > 0)	{
-		NSString *downgradeTitle = downgradeString();
-		UITableViewRowAction *downgradeAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:downgradeTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-			should = NO;
-			queue = NO;
-			[self didSelectPackage:package];
-			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.9*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
-				[cy _clickButtonWithName:@"DOWNGRADE"];
-			});
-		}];
-		downgradeAction.backgroundColor = [UIColor purpleColor];
-		[actions addObject:downgradeAction];
+	if (!isQueue) {
+		NSArray *downgrades = [package downgrades];
+		if (downgrades.count > 0)	{
+			NSString *downgradeTitle = downgradeString();
+			UITableViewRowAction *downgradeAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:downgradeTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+				shouldDismissAfterProgress = NO;
+				queue = NO;
+				[self didSelectPackage:package];
+				dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
+					[cy _clickButtonWithName:@"DOWNGRADE"];
+				});
+			}];
+			downgradeAction.backgroundColor = [UIColor purpleColor];
+			[actions addObject:downgradeAction];
+		}
 	}
     return actions;
 }

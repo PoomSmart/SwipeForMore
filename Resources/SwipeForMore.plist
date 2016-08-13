@@ -21,10 +21,14 @@
         <key>footerAlignment</key>
         <integer>1</integer>
         <key>footerText</key>
-        <string>By enabling Auto install/remove, SwipeForMore will automatically confirm any package (re)install/remove/upgrade task.
-        
-By enabling Auto dismiss, SwipeForMore will automatically dismiss the confirmation page at any task performed by any option triggered by swipe.
-        
+        <string>Auto install/remove enabled: SwipeForMore will automatically confirm any package (re)install/remove/upgrade task only if there is no issue with that package.
+
+Auto dismiss enabled: SwipeForMore will automatically dismiss the installation progress page after Install or Remove operation is performed.
+
+SwipeForMore usually suppress confirmation page when you perform queueing operations, unless the target package has any issue (cannot automatically be installed).
+
+If any of your device is below iOS 8, I recommend installing TapForMore (SwipeForMore alternative, found in my personal repo).
+
 © 2013 - 2016 Thatchapon Unprasert
 (@PoomSmart)</string>
       </dict>
@@ -76,7 +80,7 @@ By enabling Auto dismiss, SwipeForMore will automatically dismiss the confirmati
 		<key>PostNotification</key>
 		<string>com.PS.SwipeForMore.prefs</string>
 		<key>default</key>
-		<false/>
+		<true/>
 		<key>defaults</key>
 		<string>com.PS.SwipeForMore</string>
 		<key>key</key>
