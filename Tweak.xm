@@ -6,10 +6,6 @@
 #import <Cydia/Cydia-Class.h>
 #import <notify.h>
 
-@interface UIViewController (API)
-- (UIViewController *)parentOrPresentingViewController;
-@end
-
 BOOL enabled;
 BOOL noConfirm;
 BOOL autoDismiss;
@@ -310,7 +306,7 @@ NSString *normalizedString(NSString *string)
 				[self didSelectPackage:package];
 				dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.5*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
 					[cy customButtonClicked];
-				});	
+				});
 			}
 			else
 				[delegate installPackage:package];
