@@ -1,14 +1,12 @@
 DEBUG = 0
-PACKAGE_VERSION = 1.1.4
+TAGET = iphone:clang:latest
+PACKAGE_VERSION = 1.1.5
 
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = SwipeForMore
-SwipeForMore_FILES = Tweak.xm
+SwipeForMore_FILES = SwipeActionController.m Tweak.xm
 SwipeForMore_FRAMEWORKS = UIKit
-ifeq ($DEBUG, 1)
-SwipeForMore_LIBRARIES = apt-pkg
-endif
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 

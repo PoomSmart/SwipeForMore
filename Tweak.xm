@@ -4,20 +4,14 @@
 #import <Cydia/ConfirmationController.h>
 #import <Cydia/ProgressController.h>
 #import <Cydia/Cydia-Class.h>
+#import "SwipeActionController.h"
 #import <notify.h>
 
 BOOL enabled;
-BOOL noConfirm;
-BOOL autoDismiss;
-BOOL short_;
-#if DEBUG
-BOOL checkSupport;
-#endif
 
-BOOL shouldDismissAfterProgress;
-BOOL queue;
-BOOL isQueuing;
-BOOL fromTweak = NO;
+#define SAC [SwipeActionController sharedInstance]
+
+BOOL Queuing_;
 BOOL suppressCC = NO;
 
 CFStringRef PreferencesNotification = CFSTR("com.PS.SwipeForMore.prefs");
@@ -29,15 +23,11 @@ static void prefs()
 	id val = prefs[@"enabled"];
 	enabled = val ? [val boolValue] : YES;
 	val = prefs[@"confirm"];
-	noConfirm = [val boolValue];
+	SAC.autoPerform = [val boolValue];
 	val = prefs[@"autoDismiss"];
-	autoDismiss = val ? [val boolValue] : YES;
+	SAC.autoDismissWhenQueue = val ? [val boolValue] : YES;
 	val = prefs[@"short"];
-	short_ = val ? [val boolValue] : YES;
-	#if DEBUG
-	val = prefs[@"checkSupport"];
-	checkSupport = [val boolValue];
-	#endif
+	SAC.shortLabel = val ? [val boolValue] : YES;
 }
 
 static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo)
@@ -73,66 +63,23 @@ CYPackageController *cy;
 
 - (void)reloadDataWithInvocation:(NSInvocation *)invocation
 {
-	isQueuing = NO;
+	Queuing_ = NO;
 	%orig;
 }
 
 - (void)confirmWithNavigationController:(UINavigationController *)navigation
 {
-	isQueuing = NO;
+	Queuing_ = NO;
 	%orig;
 }
 
 - (void)cancelAndClear:(bool)clear
 {
-	isQueuing = !clear;
+	Queuing_ = !clear;
 	%orig;
 }
 
-- (bool)perform
-{
-	suppressCC = fromTweak && queue;
-	bool value = %orig;
-	suppressCC = fromTweak = NO;
-	return value;
-}
-
 %end
-
-#if DEBUG
-
-static void installPackage(Package *package)
-{
-	[package install];
-}
-
-static void clearPackage(Package *package)
-{
-	[package clear];
-}
-
-static BOOL canInstallPackage(Package *package)
-{
-	if (!checkSupport)
-		return YES;
-	installPackage(package);
-	if (database) {
-		pkgProblemResolver *resolver = [database resolver];
-		resolver->InstallProtect();
-		if (!resolver->Resolve(true)) {
-			clearPackage(package);
-			return NO;
-		}
-	}
-    return YES;
-}
-
-static void disableAction(UITableViewRowAction *action)
-{
-	action.backgroundColor = [UIColor systemGrayColor];
-}
-
-#endif
 
 %hook CydiaTabBarController
 
@@ -146,23 +93,19 @@ static void disableAction(UITableViewRowAction *action)
 				%orig;
 				return;
 			}
-			if (suppressCC) {
-				if (queue) {
-					// queue a package
-					[cc _doContinue];
-					queue = NO;
-				}
-				if (completion)
-					completion();
-				return;
-			}
-			if (shouldDismissAfterProgress && !isQueuing) {
+			if ([SAC fromSwipeAction]) {
+				// some actions needed after package confirmation page presentation triggered by swipe actions
 				void (^block)(void) = ^(void) {
 					if (completion)
 						completion();
-					dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.20 * NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
-						[cc confirmButtonClicked];
-					});
+					if ([SAC dismissAsQueue]) {
+						[cc performSelector:@selector(_doContinue) withObject:nil afterDelay:0.06];
+						[SAC setDismissAsQueue:NO];
+					}
+					else if ([SAC dismissAfterProgress] && !Queuing_) {
+						[cc performSelector:@selector(confirmButtonClicked) withObject:nil afterDelay:0.2];
+					}
+					[SAC setFromSwipeAction:NO];
 				};
 				%orig(vc, animated, block);
 				return;
@@ -174,31 +117,20 @@ static void disableAction(UITableViewRowAction *action)
 
 %end
 
-%hook ConfirmationController
-
-- (void)dismissModalViewControllerAnimated:(BOOL)animated
-{
-	if (suppressCC)
-		return;
-	%orig;
-}
-
-%end
-
 %hook ProgressController
 
 - (void)invoke:(NSInvocation *)invocation withTitle:(NSString *)title
 {
 	%orig;
-	if (shouldDismissAfterProgress) {
-		shouldDismissAfterProgress = NO;
+	if ([SAC dismissAfterProgress]) {
+		[SAC setDismissAfterProgress:NO];
 		uint64_t status = -1;
 		int notify_token;
 		if (notify_register_check("com.saurik.Cydia.status", &notify_token) == NOTIFY_STATUS_OK) {
 			notify_get_state(notify_token, &status);
 			notify_cancel(notify_token);
 		}
-		if (status == 0 && autoDismiss) {
+		if (status == 0 && [SAC dismissAfterProgress]) {
 			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.22 * NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
 				_UpdateExternalStatus(0);
 				[cyDelegate returnToCydia];
@@ -209,59 +141,6 @@ static void disableAction(UITableViewRowAction *action)
 }
 
 %end
-
-NSString *itsString(NSString *key, NSString *value)
-{
-	// ¯\_(ツ)_/¯
-	return [[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/iTunesStore.framework"] localizedStringForKey:key value:value table:nil];
-}
-
-NSString *_buy = nil;
-
-NSString *buyString()
-{
-	return short_ ? @"💳" : _buy ? _buy : _buy = itsString(@"BUY", @"Buy");
-}
-
-NSString *installString()
-{
-	return short_ ? @"↓" : UCLocalize("INSTALL");
-}
-
-NSString *reinstallString()
-{
-	return short_ ? @"↺" : UCLocalize("REINSTALL");
-}
-
-NSString *upgradeString()
-{
-	return short_ ? @"↑" : UCLocalize("UPGRADE");
-}
-
-NSString *removeString()
-{
-	return short_ ? @"╳" : UCLocalize("REMOVE");
-}
-
-NSString *queueString()
-{
-	return short_ ? @"Q" : UCLocalize("QUEUE");
-}
-
-NSString *clearString()
-{
-	return short_ ? @"⌧" : UCLocalize("CLEAR");
-}
-
-NSString *downgradeString()
-{
-	return short_ ? @"⇵" : UCLocalize("DOWNGRADE");
-}
-
-NSString *normalizedString(NSString *string)
-{
-	return [string stringByReplacingOccurrencesOfString:@" " withString:@"\n"];
-}
 
 %hook FilteredPackageListController
 
@@ -282,31 +161,24 @@ NSString *normalizedString(NSString *string)
 	BOOL isQueue = [package mode] != nil;
 	bool commercial = [package isCommercial];
 	if (installed) {
-		// remove
-		UITableViewRowAction *deleteAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:removeString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-			shouldDismissAfterProgress = noConfirm;
+		// uninstall action
+		UITableViewRowAction *deleteAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive title:[SAC removeString] handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+			[SAC setFromSwipeAction:YES];
+			[SAC setDismissAfterProgress:[SAC autoDismissWhenQueue]];
 			[delegate removePackage:package];
 		}];
 		[actions addObject:deleteAction];
 	}
-	NSString *installTitle = installed ? (upgradable ? upgradeString() : reinstallString()) : (commercial ? buyString() : installString());
-	installTitle = normalizedString(installTitle); // In some languages, localized "reinstall" string is too long
-	if ((!installed || short_ || IS_IPAD) && !isQueue)	{
-		// install or buy
+	NSString *installTitle = installed ? (upgradable ? [SAC upgradeString] : [SAC reinstallString]) : (commercial ? [SAC buyString] : [SAC installString]);
+	installTitle = [SAC normalizedString:installTitle]; // In some languages, localized "reinstall" string is too long
+	if ((!installed || IS_IPAD || [SAC shortLabel]) && !isQueue) {
+		// Install or reinstall or upgrade action
 		UITableViewRowAction *installAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:installTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-			#if DEBUG
-			if (!canInstallPackage(package)){
-				NSLog(@"Don't install %@", package.name);
-				disableAction(action);
-				return;
-			}
-			#endif
-			shouldDismissAfterProgress = noConfirm && (!commercial || (commercial && installed));
+			[SAC setFromSwipeAction:YES];
+			[SAC setDismissAfterProgress:[SAC autoPerform] && (!commercial || (commercial && installed))];
 			if (commercial && !installed) {
 				[self didSelectPackage:package];
-				dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.5*NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
-					[cy customButtonClicked];
-				});
+				[cy performSelector:@selector(customButtonClicked) withObject:nil afterDelay:1.3];
 			}
 			else
 				[delegate installPackage:package];
@@ -315,48 +187,38 @@ NSString *normalizedString(NSString *string)
 		[actions addObject:installAction];
 	}
 	if (installed && !isQueue) {
-		// queue reinstall action
-		NSString *queueReinstallTitle = [NSString stringWithFormat:format, queueString(), installTitle];
+		// Queue reinstall action
+		NSString *queueReinstallTitle = [SAC queueString:installTitle];
 		UITableViewRowAction *queueReinstallAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:queueReinstallTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-			shouldDismissAfterProgress = NO;
-			queue = autoDismiss;
-			fromTweak = YES;
-			[delegate installPackage:package];
-			fromTweak = NO;
+				[SAC setDismissAfterProgress:NO];
+				[SAC setDismissAsQueue:[SAC autoDismissWhenQueue]];
+				[SAC setFromSwipeAction:YES];
+				[delegate installPackage:package];
 		}];
 		queueReinstallAction.backgroundColor = [UIColor orangeColor];
 		[actions addObject:queueReinstallAction];
 	}
 	if (isQueue) {
-		// a package is currently in clear state
-		UITableViewRowAction *clearAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:clearString() handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-			shouldDismissAfterProgress = NO;
-			queue = isQueuing;
-			fromTweak = YES;
+		// Clear action
+		UITableViewRowAction *clearAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:[SAC clearString] handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+			[SAC setDismissAfterProgress:NO];
+			[SAC setDismissAsQueue:Queuing_];
+			[SAC setFromSwipeAction:YES];
 			[delegate clearPackage:package];
-			fromTweak = NO;
 		}];
 		clearAction.backgroundColor = [UIColor grayColor];
 		[actions addObject:clearAction];
 	} else {
-		// queue remove/install
-		NSString *queueTitle = [NSString stringWithFormat:format, queueString(), (installed ? removeString() : installTitle)];
+		// Queue install/remove action
+		NSString *queueTitle = [SAC queueString:(installed ? [SAC removeString] : installTitle)];
 		UITableViewRowAction *queueAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:queueTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-			#if DEBUG
-			if (!installed && !canInstallPackage(package)) {
-				NSLog(@"Don't queue install %@", package.name);
-				disableAction(action);
-				return;
-			}
-			#endif
-			shouldDismissAfterProgress = NO;
-			queue = autoDismiss;
-			fromTweak = YES;
+			[SAC setDismissAfterProgress:NO];
+			[SAC setDismissAsQueue:[SAC autoDismissWhenQueue]];
+			[SAC setFromSwipeAction:YES];
 			if (installed)
 				[delegate removePackage:package];
 			else
 				[delegate installPackage:package];
-			fromTweak = NO;
 		}];
 		queueAction.backgroundColor = installed ? [UIColor systemYellowColor] : [UIColor systemGreenColor];
 		[actions addObject:queueAction];
@@ -364,14 +226,12 @@ NSString *normalizedString(NSString *string)
 	if (!isQueue) {
 		NSArray *downgrades = [package downgrades];
 		if (downgrades.count > 0)	{
-			NSString *downgradeTitle = downgradeString();
-			UITableViewRowAction *downgradeAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:downgradeTitle handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
-				shouldDismissAfterProgress = NO;
-				queue = NO;
+			UITableViewRowAction *downgradeAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:[SAC downgradeString] handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
+				[SAC setDismissAfterProgress:NO];
+				[SAC setDismissAsQueue:NO];
+				[SAC setFromSwipeAction:YES];
 				[self didSelectPackage:package];
-				dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), ^(void){
-					[cy _clickButtonWithName:@"DOWNGRADE"];
-				});
+				[cy performSelector:@selector(_clickButtonWithName:) withObject:@"DOWNGRADE" afterDelay:0.6];
 			}];
 			downgradeAction.backgroundColor = [UIColor purpleColor];
 			[actions addObject:downgradeAction];
