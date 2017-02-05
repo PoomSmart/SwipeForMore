@@ -11,6 +11,7 @@
 @property(assign) BOOL shortLabel;
 @property(assign) BOOL autoDismissWhenQueue;
 @property(assign) BOOL autoPerform;
+@property(assign) BOOL suppressCC;
 
 - (NSString *) installString;
 - (NSString *) reinstallString;

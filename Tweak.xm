@@ -79,6 +79,26 @@ CYPackageController *cy;
 	%orig;
 }
 
+- (bool)perform
+{
+	[SAC setSuppressCC:[SAC fromSwipeAction] && [SAC dismissAsQueue]];
+	bool value = %orig;
+	[SAC setSuppressCC:NO];
+	[SAC setFromSwipeAction:NO];
+	return value;
+}
+
+%end
+
+%hook ConfirmationController
+
+- (void)dismissModalViewControllerAnimated:(BOOL)animated
+{
+	if ([SAC suppressCC])
+		return;
+	%orig;
+}
+
 %end
 
 %hook CydiaTabBarController
@@ -95,13 +115,16 @@ CYPackageController *cy;
 			}
 			if ([SAC fromSwipeAction]) {
 				// some actions needed after package confirmation page presentation triggered by swipe actions
+				if ([SAC dismissAsQueue]) {
+					if (completion)
+						completion();
+					[cc performSelector:@selector(_doContinue) withObject:nil afterDelay:0.06];
+					[SAC setDismissAsQueue:NO];
+					return;
+				}
 				void (^block)(void) = ^(void) {
 					if (completion)
 						completion();
-					if ([SAC dismissAsQueue]) {
-						[cc performSelector:@selector(_doContinue) withObject:nil afterDelay:0.06];
-						[SAC setDismissAsQueue:NO];
-					}
 					else if ([SAC dismissAfterProgress] && !Queuing_) {
 						[cc performSelector:@selector(confirmButtonClicked) withObject:nil afterDelay:0.2];
 					}
