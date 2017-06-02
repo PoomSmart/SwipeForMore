@@ -1,6 +1,5 @@
-DEBUG = 0
 TAGET = iphone:clang:latest
-PACKAGE_VERSION = 1.1.7
+PACKAGE_VERSION = 1.1.8
 
 include $(THEOS)/makefiles/common.mk
 

@@ -85,6 +85,13 @@ ProgressController *pc;
     return value;
 }
 
+- (ProgressController *)invokeNewProgress:(NSInvocation *)invocation forController:(UINavigationController *)navigation withTitle:(NSString *)title {
+    [SAC setFromProgressInvoke:YES];
+    ProgressController *cont = %orig;
+    [SAC setFromProgressInvoke:NO];
+    return cont;
+}
+
 %end
 
 %hook ConfirmationController
@@ -169,11 +176,11 @@ ProgressController *pc;
     return self;
 }
 
-- (void)invoke:(NSInvocation *)invocation withTitle:(NSString *)title {
+/*- (void)invoke:(NSInvocation *)invocation withTitle:(NSString *)title {
     [SAC setFromProgressInvoke:YES];
     %orig;
     [SAC setFromProgressInvoke:NO];
-}
+   }*/
 
 %end
 
