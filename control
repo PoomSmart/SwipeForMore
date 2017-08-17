@@ -2,8 +2,8 @@ Name: SwipeForMore (Debug)
 Package: org.thebigboss.swipeformore
 Maintainer: PoomSmart
 Author: PoomSmart
-Depends: firmware (>= 8.0), preferenceloader
+Depends: firmware (>= 8.0), mobilesubstrate, preferenceloader
 Section: Tweaks
-Version: 1.1
+Version: 1.0.0
 Architecture: iphoneos-arm
 Description: Manage packages via swipe.

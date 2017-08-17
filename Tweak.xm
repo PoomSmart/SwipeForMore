@@ -5,6 +5,8 @@
 #import <Cydia/ProgressController.h>
 #import <Cydia/Package.h>
 #import <Cydia/Cydia-Class.h>
+#import <Cydia/UIViewController+Cydia.h>
+#import <UIKit/UIColor+Private.h>
 #import "SwipeActionController.h"
 #import <notify.h>
 
@@ -21,13 +23,12 @@ BOOL enabled;
 
 #define SAC [SwipeActionController sharedInstance]
 
-BOOL Queuing_;
 BOOL suppressCC = NO;
 
 CFStringRef PreferencesNotification = CFSTR("com.PS.SwipeForMore.prefs");
 NSString *format = @"%@\n%@";
 
-static void prefs(){
+static void prefs() {
     NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/Library/Preferences/com.PS.SwipeForMore.plist"];
     id val = prefs[@"enabled"];
     enabled = val ? [val boolValue] : YES;
@@ -39,7 +40,7 @@ static void prefs(){
     SAC.shortLabel = val ? [val boolValue] : YES;
 }
 
-static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo){
+static void prefsChanged(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
     prefs();
 }
 
@@ -50,8 +51,7 @@ ProgressController *pc;
 
 %hook CYPackageController
 
-- (id)initWithDatabase: (Database *)database forPackage: (Package *)package withReferrer: (id)referrer
-{
+- (id)initWithDatabase: (Database *)database forPackage: (Package *)package withReferrer: (id)referrer {
     self = %orig;
     cy = self;
     return self;
@@ -60,22 +60,6 @@ ProgressController *pc;
 %end
 
 %hook Cydia
-
-- (void)reloadDataWithInvocation: (NSInvocation *)invocation
-{
-    Queuing_ = NO;
-    %orig;
-}
-
-- (void)confirmWithNavigationController:(UINavigationController *)navigation {
-    Queuing_ = NO;
-    %orig;
-}
-
-- (void)cancelAndClear:(bool)clear {
-    Queuing_ = !clear;
-    %orig;
-}
 
 - (bool)perform {
     [SAC setSuppressCC:[SAC fromSwipeAction] && [SAC dismissAsQueue]];
@@ -96,8 +80,7 @@ ProgressController *pc;
 
 %hook ConfirmationController
 
-- (void)dismissModalViewControllerAnimated: (BOOL)animated
-{
+- (void)dismissModalViewControllerAnimated: (BOOL)animated {
     if ([SAC suppressCC])
         return;
     %orig;
@@ -107,8 +90,7 @@ ProgressController *pc;
 
 %hook CydiaTabBarController
 
-- (void)presentViewController: (UIViewController *)vc animated: (BOOL)animated completion: (void (^)(void))completion
-{
+- (void)presentViewController: (UIViewController *)vc animated: (BOOL)animated completion: (void (^)(void))completion {
     if ([vc isKindOfClass:[UINavigationController class]]) {
         if ([((UINavigationController *)vc).topViewController class] == NSClassFromString(@"ConfirmationController")) {
             ConfirmationController *cc = (ConfirmationController *)(((UINavigationController *)vc).topViewController);
@@ -129,7 +111,7 @@ ProgressController *pc;
                 void (^block)(void) = ^(void) {
                     if (completion)
                         completion();
-                    else if ([SAC dismissAfterProgress] && !Queuing_) {
+                    else if ([SAC dismissAfterProgress]) {
                         [cc performSelector:@selector(confirmButtonClicked) withObject:nil afterDelay:0.2];
                     }
                     [SAC setFromSwipeAction:NO];
@@ -146,8 +128,7 @@ ProgressController *pc;
 
 %hook CydiaProgressData
 
-- (void)setRunning: (bool)running
-{
+- (void)setRunning: (bool)running {
     %orig;
     if (!running && [SAC dismissAfterProgress] && [SAC fromProgressInvoke]) {
         [SAC setDismissAfterProgress:NO];
@@ -169,8 +150,7 @@ ProgressController *pc;
 
 %hook ProgressController
 
-- (id)initWithDatabase: (id)arg1 delegate: (id)arg2
-{
+- (id)initWithDatabase: (id)arg1 delegate: (id)arg2 {
     self = %orig;
     pc = self;
     return self;
@@ -187,14 +167,12 @@ ProgressController *pc;
 %hook FilteredPackageListController
 
 %new
-- (BOOL)tableView: (UITableView *)tableView canEditRowAtIndexPath: (NSIndexPath *)indexPath
-{
+- (BOOL)tableView: (UITableView *)tableView canEditRowAtIndexPath: (NSIndexPath *)indexPath {
     return YES;
 }
 
 %new
-- (NSArray *)tableView: (UITableView *)tableView editActionsForRowAtIndexPath: (NSIndexPath *)indexPath_
-{
+- (NSArray *)tableView: (UITableView *)tableView editActionsForRowAtIndexPath: (NSIndexPath *)indexPath_ {
     Package *package = [self packageAtIndexPath:indexPath_];
     Cydia *delegate = (Cydia *)[UIApplication sharedApplication];
     NSMutableArray *actions = [NSMutableArray array];
@@ -243,7 +221,7 @@ ProgressController *pc;
         // Clear action
         UITableViewRowAction *clearAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal title:[SAC clearString] handler:^(UITableViewRowAction *action, NSIndexPath *indexPath) {
             [SAC setDismissAfterProgress:NO];
-            [SAC setDismissAsQueue:Queuing_];
+            [SAC setDismissAsQueue:YES];
             [SAC setFromSwipeAction:YES];
             [delegate clearPackage:package];
         }];
@@ -282,15 +260,13 @@ ProgressController *pc;
 }
 
 %new
-- (void)tableView: (UITableView *)tableView commitEditingStyle: (UITableViewCellEditingStyle)editingStyle forRowAtIndexPath: (NSIndexPath *)indexPath
-{
+- (void)tableView: (UITableView *)tableView commitEditingStyle: (UITableViewCellEditingStyle)editingStyle forRowAtIndexPath: (NSIndexPath *)indexPath {
     [tableView setEditing:NO animated:YES];
 }
 
 %end
 
-%ctor
-{
+%ctor {
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, &prefsChanged, PreferencesNotification, NULL, CFNotificationSuspensionBehaviorCoalesce);
     prefs();
     if (enabled) {
