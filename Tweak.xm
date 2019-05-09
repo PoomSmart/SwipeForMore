@@ -5,10 +5,13 @@
 #import <Cydia/ProgressController.h>
 #import <Cydia/Package.h>
 #import <Cydia/Cydia-Class.h>
-#import <Cydia/UIViewController+Cydia.h>
 #import <UIKit/UIColor+Private.h>
 #import "SwipeActionController.h"
 #import <notify.h>
+
+@interface UINavigationController (Cydia)
+- (UIViewController *)parentOrPresentingViewController;
+@end
 
 static void _UpdateExternalStatus(uint64_t newStatus) {
     int notify_token;
@@ -51,7 +54,7 @@ ProgressController *pc;
 
 %hook CYPackageController
 
-- (id)initWithDatabase: (Database *)database forPackage: (Package *)package withReferrer: (id)referrer {
+- (id)initWithDatabase:(Database *)database forPackage:(Package *)package withReferrer:(id)referrer {
     self = %orig;
     cy = self;
     return self;
@@ -80,7 +83,7 @@ ProgressController *pc;
 
 %hook ConfirmationController
 
-- (void)dismissModalViewControllerAnimated: (BOOL)animated {
+- (void)dismissModalViewControllerAnimated:(BOOL)animated {
     if ([SAC suppressCC])
         return;
     %orig;
@@ -90,7 +93,7 @@ ProgressController *pc;
 
 %hook CydiaTabBarController
 
-- (void)presentViewController: (UIViewController *)vc animated: (BOOL)animated completion: (void (^)(void))completion {
+- (void)presentViewController:(UIViewController *)vc animated:(BOOL)animated completion:(void (^)(void))completion {
     if ([vc isKindOfClass:[UINavigationController class]]) {
         if ([((UINavigationController *)vc).topViewController class] == NSClassFromString(@"ConfirmationController")) {
             ConfirmationController *cc = (ConfirmationController *)(((UINavigationController *)vc).topViewController);
@@ -128,7 +131,7 @@ ProgressController *pc;
 
 %hook CydiaProgressData
 
-- (void)setRunning: (bool)running {
+- (void)setRunning:(bool)running {
     %orig;
     if (!running && [SAC dismissAfterProgress] && [SAC fromProgressInvoke]) {
         [SAC setDismissAfterProgress:NO];
@@ -150,7 +153,7 @@ ProgressController *pc;
 
 %hook ProgressController
 
-- (id)initWithDatabase: (id)arg1 delegate: (id)arg2 {
+- (id)initWithDatabase:(id)arg1 delegate:(id)arg2 {
     self = %orig;
     pc = self;
     return self;
@@ -167,12 +170,12 @@ ProgressController *pc;
 %hook FilteredPackageListController
 
 %new
-- (BOOL)tableView: (UITableView *)tableView canEditRowAtIndexPath: (NSIndexPath *)indexPath {
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
     return YES;
 }
 
 %new
-- (NSArray *)tableView: (UITableView *)tableView editActionsForRowAtIndexPath: (NSIndexPath *)indexPath_ {
+- (NSArray *)tableView:(UITableView *)tableView editActionsForRowAtIndexPath:(NSIndexPath *)indexPath_ {
     Package *package = [self packageAtIndexPath:indexPath_];
     Cydia *delegate = (Cydia *)[UIApplication sharedApplication];
     NSMutableArray *actions = [NSMutableArray array];
@@ -189,7 +192,7 @@ ProgressController *pc;
         }];
         [actions addObject:deleteAction];
     }
-    NSString *installTitle = installed ? (upgradable ? [SAC upgradeString] : [SAC reinstallString]) : (commercial ? [SAC buyString] : [SAC installString]);
+    NSString *installTitle = installed ? (upgradable ? [SAC upgradeString] : [SAC reinstallString]) :(commercial ? [SAC buyString] : [SAC installString]);
     installTitle = [SAC normalizedString:installTitle]; // In some languages, localized "reinstall" string is too long
     if ((!installed || IS_IPAD || [SAC shortLabel]) && !isQueue) {
         // Install or reinstall or upgrade action
@@ -260,7 +263,7 @@ ProgressController *pc;
 }
 
 %new
-- (void)tableView: (UITableView *)tableView commitEditingStyle: (UITableViewCellEditingStyle)editingStyle forRowAtIndexPath: (NSIndexPath *)indexPath {
+- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView setEditing:NO animated:YES];
 }
 
