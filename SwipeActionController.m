@@ -1,5 +1,6 @@
 #import "SwipeActionController.h"
-#define UCLocalize(key) [[NSBundle mainBundle] localizedStringForKey:@ key value:nil table: nil]
+
+#define UCLocalize(key) [[NSBundle mainBundle] localizedStringForKey:@key value:nil table:nil]
 
 @implementation SwipeActionController
 
@@ -13,7 +14,7 @@
 }
 
 - (NSString *)installString {
-    return [self shortLabel] ? @"↓" : UCLocalize("INSTALL");
+    return [self shortLabel] ? @"⤓" : UCLocalize("INSTALL");
 }
 
 - (NSString *)reinstallString {
@@ -37,7 +38,7 @@
 }
 
 - (NSString *)downgradeString {
-    return [self shortLabel] ? @"⇵" : UCLocalize("DOWNGRADE");
+    return [self shortLabel] ? @"↓" : UCLocalize("DOWNGRADE");
 }
 
 - (NSString *)buyString {

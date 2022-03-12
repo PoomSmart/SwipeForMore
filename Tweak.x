@@ -1,10 +1,6 @@
 #import "../PS.h"
-#import <Cydia/FilteredPackageListController.h>
-#import <Cydia/CYPackageController.h>
-#import <Cydia/ConfirmationController.h>
-#import <Cydia/ProgressController.h>
-#import <Cydia/Package.h>
-#import <Cydia/Cydia-Class.h>
+#import <theos/IOSMacros.h>
+#import "CydiaHeader.h"
 #import <UIKit/UIColor+Private.h>
 #import "SwipeActionController.h"
 #import <notify.h>
@@ -13,7 +9,7 @@
 - (UIViewController *)parentOrPresentingViewController;
 @end
 
-static void _UpdateExternalStatus(uint64_t newStatus) {
+static void UpdateExternalStatus(uint64_t newStatus) {
     int notify_token;
     if (notify_register_check("com.saurik.Cydia.status", &notify_token) == NOTIFY_STATUS_OK) {
         notify_set_state(notify_token, newStatus);
@@ -97,7 +93,7 @@ ProgressController *pc;
     if ([vc isKindOfClass:[UINavigationController class]]) {
         if ([((UINavigationController *)vc).topViewController class] == NSClassFromString(@"ConfirmationController")) {
             ConfirmationController *cc = (ConfirmationController *)(((UINavigationController *)vc).topViewController);
-            if (MSHookIvar<NSMutableArray *>(cc, "issues_").count) {
+            if ([[cc valueForKey:@"issues_"] count]) {
                 // Problem detected, won't auto-dismiss here
                 %orig;
                 return;
@@ -142,7 +138,7 @@ ProgressController *pc;
             notify_cancel(notify_token);
         }
         if (status == 0) {
-            _UpdateExternalStatus(0);
+            UpdateExternalStatus(0);
             [cyDelegate returnToCydia];
             [[[pc navigationController] parentOrPresentingViewController] dismissViewControllerAnimated:YES completion:nil];
         }
@@ -158,12 +154,6 @@ ProgressController *pc;
     pc = self;
     return self;
 }
-
-/*- (void)invoke:(NSInvocation *)invocation withTitle:(NSString *)title {
-    [SAC setFromProgressInvoke:YES];
-    %orig;
-    [SAC setFromProgressInvoke:NO];
-   }*/
 
 %end
 
