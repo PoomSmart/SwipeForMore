@@ -1,4 +1,4 @@
-#import "../PS.h"
+#import <PSHeader/PS.h>
 #import <theos/IOSMacros.h>
 #import "CydiaHeader.h"
 #import <UIKit/UIColor+Private.h>
@@ -93,7 +93,7 @@ ProgressController *pc;
     if ([vc isKindOfClass:[UINavigationController class]]) {
         if ([((UINavigationController *)vc).topViewController class] == NSClassFromString(@"ConfirmationController")) {
             ConfirmationController *cc = (ConfirmationController *)(((UINavigationController *)vc).topViewController);
-            NSMutableArray *issues = MSHookIvar<NSMutableArray *>(cc, "issues_");
+            NSMutableArray *issues = [cc valueForKey:@"issues_"];
             if (issues.count) {
                 // Problem detected, won't auto-dismiss here
                 %orig;

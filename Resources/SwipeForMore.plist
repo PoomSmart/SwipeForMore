@@ -25,12 +25,11 @@
 
 Auto dismiss enabled: SwipeForMore will automatically dismiss the installation progress page after Install or Remove operation is performed.
 
-SwipeForMore usually suppress confirmation page when you perform queueing operations, unless the target package has any issue (cannot automatically be installed).
+SwipeForMore usually suppresses confirmation page when you perform queueing operations, unless the target package has any issues (cannot automatically be installed).
 
-If any of your device is below iOS 8, I recommend installing TapForMore (SwipeForMore alternative, found in my personal repo).
+If you are on iOS 8 or lower, TapForMore is an alternative.
 
-© 2013 - 2017 Thatchapon Unprasert
-(@PoomSmart)</string>
+© 2013 - 2024 PoomSmart</string>
 			</dict>
 			<dict>
 				<key>cell</key>
