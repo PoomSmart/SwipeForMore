@@ -93,7 +93,7 @@ ProgressController *pc;
     if ([vc isKindOfClass:[UINavigationController class]]) {
         if ([((UINavigationController *)vc).topViewController class] == NSClassFromString(@"ConfirmationController")) {
             ConfirmationController *cc = (ConfirmationController *)(((UINavigationController *)vc).topViewController);
-            NSMutableArray *issues = [cc valueForKey:@"issues_"];
+            NSMutableArray *issues = MSHookIvar<NSMutableArray *>(cc, "issues_");
             if (issues.count) {
                 // Problem detected, won't auto-dismiss here
                 %orig;
