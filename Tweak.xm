@@ -1,9 +1,9 @@
 #import <PSHeader/PS.h>
 #import <theos/IOSMacros.h>
-#import "CydiaHeader.h"
 #import <UIKit/UIColor+Private.h>
-#import "SwipeActionController.h"
 #import <notify.h>
+#import "CydiaHeader.h"
+#import "SwipeActionController.h"
 
 @interface UINavigationController (Cydia)
 - (UIViewController *)parentOrPresentingViewController;
@@ -160,12 +160,12 @@ ProgressController *pc;
 
 %hook FilteredPackageListController
 
-%new
+%new(c@:@@)
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
     return YES;
 }
 
-%new
+%new(@@:@@)
 - (NSArray *)tableView:(UITableView *)tableView editActionsForRowAtIndexPath:(NSIndexPath *)indexPath_ {
     Package *package = [self packageAtIndexPath:indexPath_];
     Cydia *delegate = (Cydia *)[UIApplication sharedApplication];
@@ -253,7 +253,11 @@ ProgressController *pc;
     return actions;
 }
 
-%new
+#ifdef __LP64__
+%new(v@:@l@)
+#else
+%new(v@:@i@)
+#endif
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView setEditing:NO animated:YES];
 }

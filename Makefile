@@ -1,6 +1,6 @@
 TAGET = iphone:clang:latest:8.0
 ARCHS = armv7 arm64
-PACKAGE_VERSION = 1.2.3
+PACKAGE_VERSION = 1.2.4
 INSTALL_TARGET_PROCESSES = Cydia
 
 include $(THEOS)/makefiles/common.mk
