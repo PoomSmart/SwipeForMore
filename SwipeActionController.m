@@ -1,3 +1,4 @@
+#import <version.h>
 #import "SwipeActionController.h"
 
 #define UCLocalize(key) [[NSBundle mainBundle] localizedStringForKey:@key value:nil table:nil]
@@ -14,7 +15,9 @@
 }
 
 - (NSString *)installString {
-    return [self shortLabel] ? @"⤓" : UCLocalize("INSTALL");
+    if ([self shortLabel])
+        return IS_IOS_OR_NEWER(iOS_11_0) ? @"⤓" : @"⇩";
+    return UCLocalize("INSTALL");
 }
 
 - (NSString *)reinstallString {
